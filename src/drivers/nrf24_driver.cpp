@@ -55,7 +55,11 @@ bool NRF24Driver::beginTX() {
 
     _radio.openWritingPipe(CONTROLLER_ADDRESS);
     _radio.openReadingPipe(1, RECEIVER_ADDRESS);
-    _radio.stopListening();   // TX-Modus
+
+    // Pipe 0 auf TX-Adresse setzen – nötig für AutoACK Empfang
+    _radio.openReadingPipe(0, CONTROLLER_ADDRESS);  // ← NEU
+
+    _radio.stopListening();
 
     DEBUG_UART.print(F("[NRF24] TX ready. Channel: "));
     DEBUG_UART.println(NRF24_CHANNEL);
@@ -71,8 +75,9 @@ bool NRF24Driver::beginRX() {
     if (!initSPI(_radio)) return false;
     configureRadio(_radio);
 
+    _radio.openReadingPipe(0, CONTROLLER_ADDRESS);  // ← NEU: Pipe 0 für ACK-Payload
     _radio.openReadingPipe(1, CONTROLLER_ADDRESS);
-    _radio.startListening();  // RX-Modus
+    _radio.startListening();
 
     DEBUG_UART.print(F("[NRF24] RX ready. Channel: "));
     DEBUG_UART.println(NRF24_CHANNEL);
@@ -80,7 +85,6 @@ bool NRF24Driver::beginRX() {
     _initialized = true;
     return true;
 }
-
 // ─── TX: Senden + ACK-Payload lesen ─────────────────────────────────────────
 bool NRF24Driver::sendMessage(const ControllerData& data,
                                TelemetryData* telemetry_out) {
@@ -146,34 +150,40 @@ bool NRF24Driver::waitForDrone(uint32_t timeout_ms) {
 
     DEBUG_UART.print(F("[NRF24] Waiting for drone"));
 
-    ControllerData ping = {};   // leeres Paket als PING
+    ControllerData ping = {};
     TelemetryData  response;
     uint32_t start = millis();
 
     while (true) {
-        // Timeout prüfen
         if (timeout_ms > 0 && (millis() - start) > timeout_ms) {
             DEBUG_UART.println(F(" TIMEOUT!"));
             return false;
         }
 
-        // PING senden
         if (_radio.write(&ping, sizeof(ControllerData))) {
-            // ACK empfangen – Status prüfen
+            DEBUG_UART.println(F(" PING ok, ACK erhalten"));   // ← NEU
             if (_radio.isAckPayloadAvailable()) {
                 _radio.read(&response, sizeof(TelemetryData));
+                DEBUG_UART.print(F(" ACK Status: "));           // ← NEU
+                DEBUG_UART.println(response.status);            // ← NEU
                 if (response.status == 1) {
                     DEBUG_UART.println(F(" OK"));
                     DEBUG_UART.print(F("[NRF24] Drone ready after "));
                     DEBUG_UART.print(millis() - start);
                     DEBUG_UART.println(F("ms"));
+                    _radio.flush_tx();   // ← TX-Buffer leeren vor Normalbetrieb
+                    delay(10);           // ← kurze Pause
                     return true;
                 }
+            } else {
+                DEBUG_UART.println(F(" Kein ACK-Payload"));     // ← NEU
             }
+        } else {
+            DEBUG_UART.println(F(" PING fehlgeschlagen"));      // ← NEU
         }
 
-        DEBUG_UART.print(F("."));   // Fortschrittsanzeige
-        delay(200);                 // 5Hz PING-Rate
+        DEBUG_UART.print(F("."));
+        delay(200);
     }
 }
 
