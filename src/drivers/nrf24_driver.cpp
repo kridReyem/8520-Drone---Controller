@@ -13,11 +13,19 @@ static bool configureRadio(RF24& radio) {
     radio.setChannel(NRF24_CHANNEL);
     radio.setAutoAck(true);
     radio.enableDynamicPayloads();
-    radio.enableAckPayload();          // ← für ACK-Telemetrie auf beiden Seiten
+    radio.enableAckPayload();
     radio.setPALevel(NRF24_PA_LEVEL);
     radio.setDataRate(NRF24_DATA_RATE);
     radio.setCRCLength(RF24_CRC_16);
     radio.setAddressWidth(5);
+
+    // Auto-Retransmit: 3 Versuche, 500µs Wartezeit zwischen Versuchen
+    // Gesamt-Timeout bei Fehler: 3 × 500µs = 1.5ms << 20ms Sendeintervall
+    radio.setRetries(2, 3);  // (delay_250us_steps, count)
+    //                  ^  ^
+    //                  |  └─ 3 Wiederholungen
+    //                  └──── 2 × 250µs = 500µs Wartezeit
+
     return true;
 }
 
@@ -131,6 +139,42 @@ bool NRF24Driver::receiveMessage(ControllerData& data_out) {
 
     _last_receive_ms = millis();   // Failsafe-Timestamp aktualisieren
     return true;
+}
+
+bool NRF24Driver::waitForDrone(uint32_t timeout_ms) {
+    if (!_initialized) return false;
+
+    DEBUG_UART.print(F("[NRF24] Waiting for drone"));
+
+    ControllerData ping = {};   // leeres Paket als PING
+    TelemetryData  response;
+    uint32_t start = millis();
+
+    while (true) {
+        // Timeout prüfen
+        if (timeout_ms > 0 && (millis() - start) > timeout_ms) {
+            DEBUG_UART.println(F(" TIMEOUT!"));
+            return false;
+        }
+
+        // PING senden
+        if (_radio.write(&ping, sizeof(ControllerData))) {
+            // ACK empfangen – Status prüfen
+            if (_radio.isAckPayloadAvailable()) {
+                _radio.read(&response, sizeof(TelemetryData));
+                if (response.status == 1) {
+                    DEBUG_UART.println(F(" OK"));
+                    DEBUG_UART.print(F("[NRF24] Drone ready after "));
+                    DEBUG_UART.print(millis() - start);
+                    DEBUG_UART.println(F("ms"));
+                    return true;
+                }
+            }
+        }
+
+        DEBUG_UART.print(F("."));   // Fortschrittsanzeige
+        delay(200);                 // 5Hz PING-Rate
+    }
 }
 
 // ─── RX: ACK-Payload für nächstes eingehendes Paket setzen ──────────────────

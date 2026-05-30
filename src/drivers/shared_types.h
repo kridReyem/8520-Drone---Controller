@@ -26,6 +26,7 @@ struct TelemetryData {
     int16_t  accel_z;
     int16_t  altitude_cm;   // cm
     uint8_t  battery_pct;   // 0-100%
+    uint8_t  status;
     uint8_t  checksum;
 };
 #pragma pack(pop)           // ← war vorher push, jetzt korrekt pop

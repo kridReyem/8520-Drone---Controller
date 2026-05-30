@@ -10,6 +10,14 @@ class NRF24Driver {
 public:
     NRF24Driver(uint8_t ce_pin, uint8_t csn_pin);
 
+        /**
+     * [TX] Wartet bis Drohne READY meldet
+     * Sendet periodisch PING-Pakete und wertet ACK-Status aus
+     * @param timeout_ms  Maximale Wartezeit in ms (0 = unbegrenzt)
+     * @return true wenn Drohne bereit
+     */
+    bool waitForDrone(uint32_t timeout_ms = 0);
+
     /**
      * Initialisiert NRF24 als Sender (Controller-Seite)
      * Öffnet WritingPipe auf CONTROLLER_ADDRESS

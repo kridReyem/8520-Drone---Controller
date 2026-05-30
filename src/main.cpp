@@ -103,6 +103,14 @@ void setup() {
     }
     DEBUG_UART.println(F("OK"));
 
+    // Handshake – warten bis Drohne bereit
+    // timeout_ms=0 → wartet unbegrenzt
+    if (!radio.waitForDrone(0)) {
+        DEBUG_UART.println(F("[ERROR] Drone not responding!"));
+        while (1) { delay(1000); }
+    }
+    // Ab hier: Drohne ist bereit, Normalbetrieb startet
+
     oled.clear();
     oled.setCursor(0, 0);
     oled.print(F("Ready!"));
@@ -138,6 +146,20 @@ void loop() {
 
         // Senden + ACK-Telemetrie empfangen
         bool success = radio.sendMessage(data, &telemetry);
+        static uint32_t tx_total = 0;
+        static uint32_t tx_fail = 0;
+        tx_total++;
+        if(!success) tx_fail++;
+
+        //UART-Ausgabe ACK-Statistics
+        DEBUG_UART.print(F(" TX:"));
+        DEBUG_UART.print(tx_total);
+        DEBUG_UART.print(F(" Fail:"));
+        DEBUG_UART.print(tx_fail);
+        DEBUG_UART.print(F(" ("));
+        DEBUG_UART.print((tx_fail * 100) / tx_total);
+        DEBUG_UART.print(F("%)"));
+        
         tx_count++;
         if (!success) tx_fail_count++;
 
